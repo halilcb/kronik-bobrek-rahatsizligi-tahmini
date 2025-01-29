@@ -6,7 +6,8 @@ import seaborn as sns
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.preprocessing import LabelEncoder
 
 import warnings
 warnings.filterwarnings("ignore")
@@ -68,26 +69,90 @@ plt.title("Feature Correlation Heatmap")
 plt.show()
 
 
+def kde(col):
+    grid = sns.FacetGrid(df, hue="class", height=6, aspect=2)
+    grid.map(sns.kdeplot, col)
+    grid.add_legend()
+
+kde("hemoglobin")
+kde("white_blood_cell_count")
+kde("packed_cell_volume")
+kde("red_blood_cell_count")
+kde("albumin")
+kde("specific_gravity")
+
+# ---------- Missing Value Problem ----------
+
+df.isna().sum().sort_values(ascending=False)
+
+def solve_mv_random_value(feature):
+    random_sample = df[feature].dropna().sample(df[feature].isna().sum())
+    random_sample.index = df[df[feature].isnull()].index
+    df.loc[df[feature].isnull(), feature] = random_sample
+
+for col in num_cols:
+    solve_mv_random_value(col)
+
+df[num_cols].isnull().sum()
 
 
+def solve_mv_mode(feature):
+    mode = df[feature].mode()[0]
+    df[feature] = df[feature].fillna(mode)
 
+solve_mv_random_value("red_blood_cells")
+solve_mv_random_value("pus_cell")
 
+for col in cat_cols:
+    solve_mv_mode(col)
 
+df[cat_cols].isnull().sum()
 
+# ---------- Feature Encoding ----------
 
+for col in cat_cols:
+    print(f"{col}: {df[col].nunique()} ")
 
+encoder = LabelEncoder()
+for col in cat_cols:
+    df[col] = encoder.fit_transform(df[col])
 
+# ---------- Decision Tree Model Training and Testing ----------
 
+independent_col = [col for col in df.columns if col != "class"]  # X
+dependent_col = "class"  # y
 
+X = df[independent_col]
+y = df[dependent_col]
 
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
 
+dtc = DecisionTreeClassifier()
+dtc.fit(X_train, y_train)
 
+y_pred = dtc.predict(X_test)
 
+dtc_acc = accuracy_score(y_test, y_pred)
 
+cm = confusion_matrix(y_test, y_pred)
+cr = classification_report(y_test, y_pred)
 
+print("Confusion matrix: \n", cm)
+print("Classification report: \n", cr)
 
+# ---------- Decision Tree Visualization ----------
 
+class_names = ["ckd", "notckd"]
 
+plt.figure(figsize=(20,10))
+plot_tree(dtc, feature_names=independent_col, filled=True, rounded=True)
+plt.show()
 
+feature_importance = pd.DataFrame({"Feature": independent_col, "Importance": dtc.feature_importances_})
 
+print("Most important feature: ", feature_importance.sort_values(by="Importance", ascending=False).iloc[0])
 
+plt.figure()
+sns.barplot(x="Importance", y="Feature", data=feature_importance)
+plt.title("Feature Importance")
+plt.show()
